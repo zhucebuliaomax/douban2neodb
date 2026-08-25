@@ -55,8 +55,16 @@
     };
     const STATUS_ORDER = ['wish', 'do', 'collect'];
 
-    // 固定导出全部字段，无需用户选择。
-    const EXPORT_FIELDS = ['title', 'id', 'rating', 'date', 'status', 'tags', 'comment', 'intro', 'link'];
+    // 豆坟（NeoDB 可导入）模板：固定全部 sheet 顺序、表头与列宽；当前分类状态的数据写入对应 sheet，其余 sheet 仅保留表头。
+    const DOUFEN_SHEETS = ['看过', '在看', '想看', '听过', '在听', '想听', '读过', '在读', '想读', '玩过', '在玩', '想玩', '看过的舞台剧', '想看的舞台剧'];
+    const DOUFEN_HEADERS = ['标题', '简介', '豆瓣评分', '链接', '创建时间', '我的评分', '标签', '评论', '可见性'];
+    const DOUFEN_COL_WIDTHS = [40, 50, 10, 50, 20, 10, 30, 50, 10];
+    const DOUFEN_STATUS_SHEETS = {
+        movie: { collect: '看过', do: '在看', wish: '想看' },
+        music: { collect: '听过', do: '在听', wish: '想听' },
+        book: { collect: '读过', do: '在读', wish: '想读' },
+        game: { collect: '玩过', do: '在玩', wish: '想玩' }
+    };
 
     const styleText = `
         #db-export-summary-btn {
@@ -608,23 +616,34 @@
         };
     }
 
+    function buildDoufenRow(item) {
+        // 豆坟模板列序：标题 / 简介 / 豆瓣评分 / 链接 / 创建时间 / 我的评分 / 标签 / 评论 / 可见性
+        return [
+            item.title || null,
+            item.intro || null,
+            null, // 豆瓣评分（社区评分）脚本未采集，保持为空
+            item.link || null,
+            item.date || null,
+            item.rating === '' ? null : item.rating,
+            item.tags ? String(item.tags).split(/\s+/).filter(Boolean).join(',') : null, // 模板标签为逗号分隔
+            item.comment || null,
+            'public'
+        ];
+    }
+
     function buildWorkbook(category) {
         if (typeof XLSX === 'undefined') throw new Error('Excel 组件加载失败，请刷新页面后重试。');
         const data = getStoredData();
-        const headers = {
-            title: '标题', id: '豆瓣条目 ID', rating: '个人评分', date: '标记日期', status: '收藏状态', tags: '标签',
-            comment: '短评/备注', intro: '简介/出版信息', link: '豆瓣链接'
-        };
-        const sheet = [EXPORT_FIELDS.map(field => headers[field])];
-        data.forEach(item => sheet.push(EXPORT_FIELDS.map(field => {
-            if (field === 'rating') return item.rating === '' ? '' : item.rating;
-            if (field === 'tags') return item.tags || '';
-            return item[field] || '';
-        })));
-        const ws = XLSX.utils.aoa_to_sheet(sheet);
-        ws['!cols'] = EXPORT_FIELDS.map(field => ({ wch: field === 'title' ? 42 : field === 'comment' || field === 'intro' ? 52 : field === 'link' ? 64 : 16 }));
+        // 与豆坟模板格式一致：保留全部 sheet 与表头，当前分类状态的数据写入对应 sheet，其余 sheet 仅表头。
+        const targetSheet = (DOUFEN_STATUS_SHEETS[category] || {})[getStatusFromUrl()] || '';
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, `${CATEGORIES[category].sheet}（${getCategoryStatusLabel(category)}）`);
+        DOUFEN_SHEETS.forEach(sheetName => {
+            const rows = [DOUFEN_HEADERS.slice()];
+            if (sheetName === targetSheet) data.forEach(item => rows.push(buildDoufenRow(item)));
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            ws['!cols'] = DOUFEN_COL_WIDTHS.map(width => ({ width }));
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        });
         return wb;
     }
 
