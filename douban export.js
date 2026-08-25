@@ -3,7 +3,7 @@
 // @name:en      Douban to NeoDB
 // @name:zh-CN   豆瓣标记导出（支持NeoDB导入）
 // @namespace    https://github.com/zhucebuliaomax/douban2neodb
-// @version      1.0.0
+// @version      1.1.0
 // @description  导出豆瓣电影、读书、音乐和游戏收藏为 Excel/JSON；Excel 兼容豆坟格式，可导入 NeoDB。
 // @description:en Export Douban movies, books, music and games to Excel/JSON; the Excel file is compatible with the Doufen format and can be imported into NeoDB.
 // @author       ming; Modified by Max
@@ -67,13 +67,33 @@
     };
 
     const styleText = `
-        #db-export-summary-btn {
+        #db-export-btn-bar {
             position: fixed; top: 110px; right: 20px; z-index: 9999;
+            display: flex; align-items: center; gap: 8px;
+        }
+        #db-export-summary-btn {
             padding: 10px 18px; border: 0; border-radius: 24px; cursor: pointer;
             background: #3eaf7c; color: #fff; font-size: 14px; font-weight: 700;
             box-shadow: 0 4px 12px rgba(62,175,124,.35); transition: .2s;
         }
         #db-export-summary-btn:hover { background: #339268; transform: translateY(-1px); }
+        #db-export-abort-btn {
+            display: inline-flex; align-items: center;
+            padding: 10px 18px; border: 0; border-radius: 24px; cursor: pointer;
+            background: #e74c3c; color: #fff; font-size: 14px; font-weight: 700;
+            box-shadow: 0 4px 12px rgba(231,76,60,.35); transition: .2s;
+        }
+        #db-export-abort-btn .db-abort-extra {
+            display: grid;
+            grid-template-columns: 0fr;
+            transition: grid-template-columns .25s ease;
+        }
+        #db-export-abort-btn .db-abort-extra-inner {
+            overflow: hidden;
+            white-space: nowrap;
+        }
+        #db-export-abort-btn:hover { background: #c0392b; transform: translateY(-1px); }
+        #db-export-abort-btn:hover .db-abort-extra { grid-template-columns: 1fr; }
         #db-export-summary-overlay, #db-export-modal-overlay {
             position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,.52);
             display: flex; align-items: center; justify-content: center;
@@ -500,14 +520,29 @@
     function renderSummaryButton(context) {
         if (document.getElementById('db-export-summary-btn')) return;
         addStyle(styleText);
+        const state = getState();
+        const bar = document.createElement('div');
+        bar.id = 'db-export-btn-bar';
         const button = document.createElement('button');
         button.id = 'db-export-summary-btn';
         button.type = 'button';
-        const state = getState();
         button.textContent = state.status === 'running' && state.category === context ? '⏳ 抓取中 · 汇总' : '📊 书影音游戏汇总';
         button.title = '汇总并导航到具体分类导出';
         button.onclick = () => showSummaryPanel(context);
-        document.body.appendChild(button);
+        bar.appendChild(button);
+        if (state.status === 'running' && state.category === context) {
+            const abortButton = document.createElement('button');
+            abortButton.id = 'db-export-abort-btn';
+            abortButton.type = 'button';
+            abortButton.innerHTML = '终止抓取<span class="db-abort-extra"><span class="db-abort-extra-inner">，这会清除已抓取数据</span></span>';
+            abortButton.onclick = () => {
+                localStorage.removeItem(storageKey(CONFIG.dataKey));
+                setState({ status: 'idle' });
+                location.reload();
+            };
+            bar.insertBefore(abortButton, button);
+        }
+        document.body.appendChild(bar);
     }
 
     function setGridMode(category, url) {
@@ -541,8 +576,10 @@
         if (state.status !== 'running') return;
         const delay = Math.floor(Math.random() * (CONFIG.maxDelay - CONFIG.minDelay) + CONFIG.minDelay);
         setTimeout(async () => {
+            if (getState().status !== 'running') return;
             try {
                 const pageData = await scrapeCurrentPage(category);
+                if (getState().status !== 'running') return;
                 const merged = new Map(getStoredData().map(item => [item.link || item.id, item]));
                 pageData.forEach(item => merged.set(item.link || item.id, item));
                 setStoredData([...merged.values()]);
