@@ -3,7 +3,7 @@
 // @name:en      Douban to NeoDB
 // @name:zh-CN   豆瓣标记导出（支持NeoDB导入）
 // @namespace    https://github.com/zhucebuliaomax/douban2neodb
-// @version      1.1.0
+// @version      1.1.1
 // @description  导出豆瓣电影、读书、音乐和游戏收藏为 Excel/JSON；Excel 兼容豆坟格式，可导入 NeoDB。
 // @description:en Export Douban movies, books, music and games to Excel/JSON; the Excel file is compatible with the Doufen format and can be imported into NeoDB.
 // @author       ming; Modified by Max
@@ -653,6 +653,14 @@
         };
     }
 
+    function formatDoufenDate(value) {
+        // 豆瓣收藏页只显示日期，NeoDB 导入器却按 "%Y-%m-%d %H:%M:%S" 严格解析"创建时间"，
+        // 仅日期会导致解析失败并回退为导入时间。补一个固定时刻 05:03:06 凑成完整格式。
+        const match = String(value).match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+        if (!match) return value;
+        return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')} 05:03:06`;
+    }
+
     function buildDoufenRow(item) {
         // 豆坟模板列序：标题 / 简介 / 豆瓣评分 / 链接 / 创建时间 / 我的评分 / 标签 / 评论 / 可见性
         return [
@@ -660,7 +668,7 @@
             item.intro || null,
             null, // 豆瓣评分（社区评分）脚本未采集，保持为空
             item.link || null,
-            item.date || null,
+            item.date ? formatDoufenDate(item.date) : null,
             item.rating === '' ? null : item.rating,
             item.tags ? String(item.tags).split(/\s+/).filter(Boolean).join(',') : null, // 模板标签为逗号分隔
             item.comment || null,
